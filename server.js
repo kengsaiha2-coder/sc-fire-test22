@@ -1,5 +1,11 @@
 const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    fetchLatestBaileysVersion, 
+    Browsers 
+} = require('@whiskeysockets/baileys');
 const cors = require('cors');
 
 const app = express();
@@ -9,13 +15,8 @@ const SECRET_KEY = process.env.SECRET_KEY || 'SEC_AUTH_KEY_99X';
 app.use(cors());
 app.use(express.json());
 
-// ป้องกันเซิร์ฟเวอร์แครชหลุด (Anti-Crash Guard)
-process.on('uncaughtException', (err) => {
-    console.error('⚠️ ตรวจพบข้อผิดพลาด (ป้องกันเซิร์ฟเวอร์ดับแล้ว):', err.message);
-});
-process.on('unhandledRejection', (reason) => {
-    console.error('⚠️ Unhandled Rejection (ป้องกันเซิร์ฟเวอร์ดับแล้ว):', reason);
-});
+process.on('uncaughtException', (err) => console.error('⚠️ Uncaught:', err.message));
+process.on('unhandledRejection', (reason) => console.error('⚠️ Rejection:', reason));
 
 let waSock = null;
 let isConnected = false;
@@ -24,11 +25,21 @@ let currentRawQr = null;
 async function connectToWhatsApp() {
     try {
         const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+        
+        // ดึงเวอร์ชันล่าสุดของ WhatsApp Web อัตโนมัติ ป้องกัน Error 405
+        const { version, isLatest } = await fetchLatestBaileysVersion();
+        console.log(`📡 ใช้งาน WhatsApp Web Version: ${version.join('.')} (Latest: ${isLatest})`);
 
         waSock = makeWASocket({
+            version,
             auth: state,
             printQRInTerminal: false,
-            browser: ['SC-Fire-Bot', 'Chrome', '120.0.0']
+            // แก้ไขปัญหา 405 โดยใช้ Profile มาตรฐานของ Baileys
+            browser: Browsers.macOS('Desktop'),
+            syncFullHistory: false,
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 10000
         });
 
         waSock.ev.on('creds.update', saveCreds);
@@ -39,8 +50,8 @@ async function connectToWhatsApp() {
             if (qr) {
                 currentRawQr = qr;
                 console.log('\n======================================================');
-                console.log('📱 QR CODE พร้อมสแกนแล้ว!');
-                console.log('👉 เปิดสแกนผ่านหน้าเว็บ: https://sc-fire-test22.onrender.com/qr');
+                console.log('📱 QR CODE ออกแล้ว! เปิดสแกนที่ลิงก์นี้:');
+                console.log('👉 https://sc-fire-test22.onrender.com/qr');
                 console.log('======================================================\n');
             }
 
@@ -48,11 +59,11 @@ async function connectToWhatsApp() {
                 currentRawQr = null;
                 isConnected = false;
                 const statusCode = (lastDisconnect?.error)?.output?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                console.log(`⚠️ การเชื่อมต่อปิดตัวลง (Status: ${statusCode}) กำลังเชื่อมต่อใหม่ใน 4 วินาที...`);
-                if (shouldReconnect) {
-                    setTimeout(connectToWhatsApp, 4000);
-                }
+                
+                // ถ้าโดนเตะ 405 หรือ Logout ให้หน่วงเวลา 8 วินาทีแล้วลองใหม่
+                console.log(`⚠️ การเชื่อมต่อปิดตัวลง (Status: ${statusCode}) กำลังต่อใหม่ใน 8 วินาที...`);
+                setTimeout(connectToWhatsApp, 8000);
+
             } else if (connection === 'open') {
                 currentRawQr = null;
                 isConnected = true;
@@ -60,41 +71,35 @@ async function connectToWhatsApp() {
             }
         });
     } catch (err) {
-        console.error('❌ เกิดข้อผิดพลาดในการต่อ Baileys:', err.message);
-        setTimeout(connectToWhatsApp, 5000);
+        console.error('❌ ข้อผิดพลาดการเริ่มระบบ Baileys:', err.message);
+        setTimeout(connectToWhatsApp, 8000);
     }
 }
 
-// 🌐 หน้าเว็บสแกน QR Code (เปิดดูบนมือถือหรือคอมได้ทันที ไม่ต้องลงไลบรารีเพิ่ม)
+// 🌐 หน้าเว็บแสดง QR Code สำหรับสแกน
 app.get('/qr', (req, res) => {
     if (isConnected) {
         return res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head><meta charset="utf-8"><title>WhatsApp Online</title></head>
+            <!DOCTYPE html><html><head><meta charset="utf-8"><title>Online</title></head>
             <body style="font-family:sans-serif; text-align:center; padding:50px; background:#0f172a; color:#fff;">
                 <h1 style="color:#22c55e;">✅ เชื่อมต่อ WhatsApp สำเร็จแล้ว!</h1>
-                <p>เซิร์ฟเวอร์ออนไลน์และพร้อมรับคำสั่งส่งข้อความเรียบร้อยแล้วครับ</p>
-                <a href="/api/status" style="color:#38bdf8; text-decoration:none;">🔗 ตรวจสอบสถานะ /api/status</a>
-            </body>
-            </html>
+                <p>บอทของคุณออนไลน์พร้อมใช้งานเรียบร้อยแล้ว</p>
+                <a href="/api/status" style="color:#38bdf8;">คลิกดูสถานะระบบ /api/status</a>
+            </body></html>
         `);
     }
 
     if (!currentRawQr) {
         return res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head><meta charset="utf-8"><meta http-equiv="refresh" content="3"><title>Loading QR...</title></head>
+            <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="3"><title>Loading...</title></head>
             <body style="font-family:sans-serif; text-align:center; padding:50px; background:#0f172a; color:#fff;">
-                <h2 style="color:#f59e0b;">⏳ กำลังเชื่อมต่อเซิร์ฟเวอร์ WhatsApp...</h2>
-                <p style="color:#94a3b8;">หน้านี้จะรีเฟรชให้อัตโนมัติทุก 3 วินาทีเพื่อรอ QR Code</p>
-            </body>
-            </html>
+                <h2 style="color:#f59e0b;">⏳ กำลังรอ QR Code จาก WhatsApp...</h2>
+                <p style="color:#94a3b8;">หน้านี้จะรีเฟรชให้อัตโนมัติทุก 3 วินาที</p>
+            </body></html>
         `);
     }
 
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(currentRawQr)}`;
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(currentRawQr)}`;
 
     res.send(`
         <!DOCTYPE html>
@@ -102,20 +107,18 @@ app.get('/qr', (req, res) => {
         <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <meta http-equiv="refresh" content="25">
+            <meta http-equiv="refresh" content="20">
             <title>สแกน QR Code WhatsApp</title>
         </head>
-        <body style="font-family:sans-serif; text-align:center; padding:30px; background:#0f172a; color:#fff;">
-            <h1 style="color:#38bdf8; font-size:24px; margin-bottom:8px;">สแกนเพื่อเชื่อมต่อ WhatsApp</h1>
-            <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">
-                เปิด WhatsApp ➔ เมนู (3 จุด) หรือการตั้งค่า ➔ <b>อุปกรณ์ที่เชื่อมโยง</b> ➔ สแกนรูปด้านล่าง:
+        <body style="font-family:sans-serif; text-align:center; padding:25px; background:#0f172a; color:#fff;">
+            <h1 style="color:#38bdf8; font-size:22px;">สแกนเพื่อเชื่อมต่อ WhatsApp</h1>
+            <p style="color:#94a3b8; font-size:13px; margin-bottom:15px;">
+                เปิด WhatsApp ในมือถือ ➔ เมนู (3 จุด) หรือการตั้งค่า ➔ <b>อุปกรณ์ที่เชื่อมโยง</b> ➔ สแกนรูปด้านล่าง:
             </p>
-            <div style="display:inline-block; padding:16px; background:#ffffff; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,0.6);">
+            <div style="display:inline-block; padding:15px; background:#fff; border-radius:16px;">
                 <img src="${qrImageUrl}" alt="WhatsApp QR Code" style="display:block; width:280px; height:280px;" />
             </div>
-            <p style="color:#64748b; font-size:12px; margin-top:20px;">
-                ⏱️ หาก QR หมดอายุ หน้านี้จะรีเฟรชให้อัตโนมัติ
-            </p>
+            <p style="color:#64748b; font-size:12px; margin-top:15px;">⏱️ หน้านี้จะรีเฟรชให้อัตโนมัติเมื่อ QR หมดอายุ</p>
         </body>
         </html>
     `);
@@ -136,7 +139,7 @@ app.get('/api/ping', (req, res) => {
     res.json({ pong: true, time: Date.now() });
 });
 
-// API สำหรับรับคำสั่งส่งข้อความ
+// API รับคำสั่งส่งข้อความจาก Base APK
 app.post('/api/execute', async (req, res) => {
     const authHeader = req.headers['authorization'];
     const bodyKey = req.body.secretKey;
@@ -161,6 +164,6 @@ app.post('/api/execute', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 SC-Fire Server กำลังทำงานที่พอร์ต ${PORT}`);
+    console.log(`🚀 เซิร์ฟเวอร์ทำงานที่พอร์ต ${PORT}`);
     connectToWhatsApp();
 });
