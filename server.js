@@ -20,26 +20,18 @@ app.use(express.json());
 
 let waSock = null;
 
-async function connectToWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState('./auth_sessions');
-  waSock = makeWASocket({
-    auth: state,
-    printQRInTerminal: true,
-    logger: pino({ level: 'silent' }),
-    browser: ['Ubuntu', 'Chrome', '20.0.04']
-  });
+// ในฟังก์ชันเชื่อมต่อ WhatsApp ให้ใส่คำสั่งนี้ก่อนเชื่อมต่อ
+const phoneNumber = "66941876682"; // ใส่เบอร์ของคุณ (รหัสประเทศ 66 ตัดเลข 0 หน้าสุดออก)
 
-  waSock.ev.on('creds.update', saveCreds);
-  waSock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
-    if (connection === 'close') {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      if (shouldReconnect) connectToWhatsApp();
-    }
-  });
+if (!waSock.authState.creds.registered) {
+    setTimeout(async () => {
+        const code = await waSock.requestPairingCode(phoneNumber);
+        console.log(`\n================================`);
+        console.log(`🔑 รหัสเชื่อมโยงจริงของคุณคือ: ${code}`);
+        console.log(`================================\n`);
+    }, 5000);
 }
-
-// REST API for Base APK Trigger
+REST API for Base APK Trigger
 app.post('/api/execute', async (req, res) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader ? authHeader.replace('Bearer ', '') : req.body.secretKey;
